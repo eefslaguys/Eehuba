@@ -1,4 +1,4 @@
--- Hacker-Style GUI by EA (No crosshair, FOV 210, movable frame)
+-- Hacker-Style GUI by EA (with toggle buttons and smooth instant aimbot)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -10,9 +10,9 @@ ScreenGui.Name = "HackerGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
--- Movable Frame (for settings or whatever you want)
+-- Movable Frame
 local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 200, 0, 100)
+Frame.Size = UDim2.new(0, 200, 0, 130)
 Frame.Position = UDim2.new(0, 10, 0, 10)
 Frame.BackgroundColor3 = Color3.new(0, 0, 0)
 Frame.BackgroundTransparency = 0.3
@@ -20,7 +20,42 @@ Frame.BorderSizePixel = 0
 Frame.Active = true
 Frame.Draggable = true
 
--- FOV Circle as GUI (radius 210)
+local function createButton(text, pos)
+    local btn = Instance.new("TextButton", Frame)
+    btn.Size = UDim2.new(0, 180, 0, 40)
+    btn.Position = pos
+    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 20
+    btn.Text = text
+    btn.AutoButtonColor = true
+    return btn
+end
+
+-- Toggle Buttons
+local espEnabled = true
+local aimbotEnabled = true
+
+local espBtn = createButton("ESP: ON", UDim2.new(0, 10, 0, 10))
+local aimBtn = createButton("Aimbot: ON", UDim2.new(0, 10, 0, 60))
+
+espBtn.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    espBtn.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
+    if not espEnabled then
+        for _, box in pairs(ScreenGui:FindFirstChild("ESP_Boxes"):GetChildren()) do
+            box:Destroy()
+        end
+    end
+end)
+
+aimBtn.MouseButton1Click:Connect(function()
+    aimbotEnabled = not aimbotEnabled
+    aimBtn.Text = "Aimbot: " .. (aimbotEnabled and "ON" or "OFF")
+end)
+
+-- FOV Circle (visible)
 local FOV = 210
 
 local FOVCircle = Instance.new("Frame", ScreenGui)
@@ -64,6 +99,7 @@ local function removeESP(name)
 end
 
 local function updateESP()
+    if not espEnabled then return end
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
             if not ESPFolder:FindFirstChild(player.Name) then
@@ -79,10 +115,10 @@ end
 
 RunService.RenderStepped:Connect(updateESP)
 
--- Aimbot using GUI-based FOV circle radius
+-- Smooth aimbot aiming
 local function getClosestTarget()
     local closest = nil
-    local shortestDistance = FOV -- Use GUI circle radius
+    local shortestDistance = FOV
 
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
@@ -105,14 +141,18 @@ local function getClosestTarget()
     return closest
 end
 
-local aimEnabled = true
+local aimSpeed = 0.3 -- higher is faster, 1 is instant
+
 RunService.RenderStepped:Connect(function()
-    if aimEnabled then
+    if aimbotEnabled then
         local target = getClosestTarget()
         if target and target.Character and target.Character:FindFirstChild("Head") then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+            local currentCFrame = Camera.CFrame
+            local goalCFrame = CFrame.new(currentCFrame.Position, target.Character.Head.Position)
+            -- Smoothly move camera toward target
+            Camera.CFrame = currentCFrame:Lerp(goalCFrame, aimSpeed)
         end
     end
 end)
 
-print("Hacker-style GUI loaded with FOV radius 210 and no crosshair.")
+print("Hacker-style GUI loaded with toggles and smooth aimbot.")
