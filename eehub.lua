@@ -1,4 +1,4 @@
--- Hacker-Style GUI by EA (GUI-based FOV circle, movable frame, crosshair)
+-- Hacker-Style GUI by EA (No crosshair, FOV 210, movable frame)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -10,7 +10,7 @@ ScreenGui.Name = "HackerGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
--- Movable Frame
+-- Movable Frame (for settings or whatever you want)
 local Frame = Instance.new("Frame", ScreenGui)
 Frame.Size = UDim2.new(0, 200, 0, 100)
 Frame.Position = UDim2.new(0, 10, 0, 10)
@@ -20,26 +20,8 @@ Frame.BorderSizePixel = 0
 Frame.Active = true
 Frame.Draggable = true
 
--- Crosshair
-local Crosshair = Instance.new("Frame", ScreenGui)
-Crosshair.Size = UDim2.new(0, 20, 0, 20)
-Crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
-Crosshair.Position = UDim2.new(0.5, 0, 0.5, 0)
-Crosshair.BackgroundColor3 = Color3.new(1, 1, 1)
-Crosshair.BackgroundTransparency = 0
-
-local horizontal = Instance.new("Frame", Crosshair)
-horizontal.Size = UDim2.new(1, 0, 0, 2)
-horizontal.Position = UDim2.new(0, 0, 0.5, -1)
-horizontal.BackgroundColor3 = Color3.new(1, 0, 0)
-
-local vertical = Instance.new("Frame", Crosshair)
-vertical.Size = UDim2.new(0, 2, 1, 0)
-vertical.Position = UDim2.new(0.5, -1, 0, 0)
-vertical.BackgroundColor3 = Color3.new(1, 0, 0)
-
--- FOV Circle as GUI
-local FOV = 100
+-- FOV Circle as GUI (radius 210)
+local FOV = 210
 
 local FOVCircle = Instance.new("Frame", ScreenGui)
 FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -133,4 +115,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("Hacker-style GUI loaded with GUI FOV circle.")
+print("Hacker-style GUI loaded with FOV radius 210 and no crosshair.")
