@@ -1,35 +1,33 @@
--- Hacker-Style GUI by EA (Movable + Crosshair + Mobile support)
+-- Hacker-Style GUI by EA (GUI-based FOV circle, movable frame, crosshair)
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- GUI Setup
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "HackerGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
+-- Movable Frame
 local Frame = Instance.new("Frame", ScreenGui)
 Frame.Size = UDim2.new(0, 200, 0, 100)
 Frame.Position = UDim2.new(0, 10, 0, 10)
 Frame.BackgroundColor3 = Color3.new(0, 0, 0)
 Frame.BackgroundTransparency = 0.3
 Frame.BorderSizePixel = 0
-Frame.Active = true -- Important for dragging
+Frame.Active = true
 Frame.Draggable = true
 
--- Crosshair Setup
+-- Crosshair
 local Crosshair = Instance.new("Frame", ScreenGui)
 Crosshair.Size = UDim2.new(0, 20, 0, 20)
 Crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
 Crosshair.Position = UDim2.new(0.5, 0, 0.5, 0)
 Crosshair.BackgroundColor3 = Color3.new(1, 1, 1)
 Crosshair.BackgroundTransparency = 0
-Crosshair.BorderSizePixel = 0
 
--- Crosshair lines
 local horizontal = Instance.new("Frame", Crosshair)
 horizontal.Size = UDim2.new(1, 0, 0, 2)
 horizontal.Position = UDim2.new(0, 0, 0.5, -1)
@@ -39,6 +37,24 @@ local vertical = Instance.new("Frame", Crosshair)
 vertical.Size = UDim2.new(0, 2, 1, 0)
 vertical.Position = UDim2.new(0.5, -1, 0, 0)
 vertical.BackgroundColor3 = Color3.new(1, 0, 0)
+
+-- FOV Circle as GUI
+local FOV = 100
+
+local FOVCircle = Instance.new("Frame", ScreenGui)
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.Size = UDim2.new(0, FOV * 2, 0, FOV * 2)
+FOVCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.BorderSizePixel = 0
+
+local circleOutline = Instance.new("UICorner", FOVCircle)
+circleOutline.CornerRadius = UDim.new(1, 0)
+
+local circleStroke = Instance.new("UIStroke", FOVCircle)
+circleStroke.Color = Color3.new(1, 1, 1)
+circleStroke.Thickness = 2
+circleStroke.Transparency = 0.4
 
 -- ESP Setup
 local ESPFolder = Instance.new("Folder", ScreenGui)
@@ -81,26 +97,10 @@ end
 
 RunService.RenderStepped:Connect(updateESP)
 
--- FOV and Aimbot
-local FOV = 100
-local circle = Drawing and Drawing.new and Drawing.new("Circle") or nil
-if circle then
-    circle.Radius = FOV
-    circle.Color = Color3.new(1, 1, 1)
-    circle.Thickness = 2
-    circle.Filled = false
-    circle.Transparency = 0.6
-end
-
-RunService.RenderStepped:Connect(function()
-    if circle then
-        circle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    end
-end)
-
+-- Aimbot using GUI-based FOV circle radius
 local function getClosestTarget()
     local closest = nil
-    local shortestDistance = FOV
+    local shortestDistance = FOV -- Use GUI circle radius
 
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
@@ -133,4 +133,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("Hacker-style GUI loaded (movable + mobile crosshair).")
+print("Hacker-style GUI loaded with GUI FOV circle.")
