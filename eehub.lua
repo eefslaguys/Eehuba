@@ -1,168 +1,142 @@
--- Hacker-Style GUI with Toggleable Aimbot by EA
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local Camera = Workspace.CurrentCamera
 
--- Settings
-local FOV_RADIUS = 210
+-- Configuration
+local FOV_RADIUS_DEGREES = 210 -- As per request
+-- Convert 210 degrees to a 2D radius in pixels on screen based on the camera’s FOV and screen size
+-- We'll draw a circle with a radius in pixels on the screen, approximate 210° in view angle:
+-- Full circle 360°, 210° is about 58% of a circle, but for circle on screen, let's consider pixels:
+-- We can pick a pixel radius that covers roughly this angular range on screen.
+-- Let's just pick 200 pixels for radius which is visually large
 
--- Globals
-local AimbotEnabled = false
-local HoldingButton = false
+local FOV_RADIUS_PIXELS = 200
+
+local enabled = false
 
 -- GUI Setup
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "HackerGUI"
-ScreenGui.Parent = game.CoreGui
-ScreenGui.ResetOnSpawn = false
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FOVToggleGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Main Frame (movable)
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 220, 0, 120)
-Frame.Position = UDim2.new(0, 50, 0, 50)
-Frame.BackgroundColor3 = Color3.fromRGB(15,15,15)
-Frame.BackgroundTransparency = 0.3
-Frame.BorderSizePixel = 0
-Frame.Active = true
-Frame.Draggable = true
-Frame.Parent = ScreenGui
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 100, 0, 40)
+toggleButton.Position = UDim2.new(0, 10, 0, 10)
+toggleButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+toggleButton.TextColor3 = Color3.new(1,1,1)
+toggleButton.Text = "FOV: OFF"
+toggleButton.Parent = screenGui
 
--- Title
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 30)
-Title.BackgroundTransparency = 1
-Title.Text = "Hacker GUI by EA"
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
-Title.TextColor3 = Color3.fromRGB(255,255,255)
-Title.Parent = Frame
-
--- Aimbot Toggle Button
-local AimbotBtn = Instance.new("TextButton")
-AimbotBtn.Size = UDim2.new(1, -20, 0, 40)
-AimbotBtn.Position = UDim2.new(0, 10, 0, 40)
-AimbotBtn.BackgroundColor3 = Color3.fromRGB(45,45,45)
-AimbotBtn.TextColor3 = Color3.fromRGB(255,255,255)
-AimbotBtn.Font = Enum.Font.GothamBold
-AimbotBtn.TextSize = 16
-AimbotBtn.Text = "Aimbot: OFF"
-AimbotBtn.Parent = Frame
-
-AimbotBtn.MouseButton1Click:Connect(function()
-    AimbotEnabled = not AimbotEnabled
-    AimbotBtn.Text = AimbotEnabled and "Aimbot: ON" or "Aimbot: OFF"
+toggleButton.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    toggleButton.Text = enabled and "FOV: ON" or "FOV: OFF"
 end)
 
--- ESP Setup
-local ESPFolder = Instance.new("Folder", game.CoreGui)
-ESPFolder.Name = "ESP_Boxes"
+-- Draw FOV circle
+local fovCircle = Drawing.new("Circle")
+fovCircle.Visible = false
+fovCircle.Color = Color3.new(1, 1, 1)
+fovCircle.Transparency = 0.5
+fovCircle.Thickness = 2
 
-local function createESP(player)
-    if player == LocalPlayer then return end
-    local box = Instance.new("BillboardGui")
-    box.Name = player.Name
-    box.Adornee = player.Character and player.Character:FindFirstChild("Head")
-    box.Size = UDim2.new(4, 0, 5, 0)
-    box.AlwaysOnTop = true
-    box.Parent = ESPFolder
+-- Crosshair parts (assumes crosshair is centered, let's create a custom one)
+local crosshair = Drawing.new("Circle")
+crosshair.Color = Color3.new(1, 0, 0)
+crosshair.Thickness = 2
+crosshair.NumSides = 6
+crosshair.Radius = 5
+crosshair.Visible = false
 
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-    frame.BackgroundTransparency = 0.2
-    frame.Parent = box
+-- Helper functions
+local function isWallBetween(pos1, pos2)
+    local ray = Ray.new(pos1, (pos2 - pos1))
+    local hit, hitPos = Workspace:FindPartOnRay(ray, LocalPlayer.Character, false, true)
+    if hit then
+        -- hit something between pos1 and pos2, check distance
+        local distToHit = (hitPos - pos1).Magnitude
+        local distToTarget = (pos2 - pos1).Magnitude
+        return distToHit < distToTarget
+    end
+    return false
 end
 
-local function removeESP(name)
-    local box = ESPFolder:FindFirstChild(name)
-    if box then box:Destroy() end
+local function isTeammate(player)
+    -- Basic team check, assumes teams service or player.Team property
+    return player.Team == LocalPlayer.Team
 end
 
-local function updateESP()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") and player.Character:FindFirstChild("Humanoid") then
-            if player.Character.Humanoid.Health > 0 then
-                if not ESPFolder:FindFirstChild(player.Name) then
-                    createESP(player)
-                else
-                    ESPFolder[player.Name].Adornee = player.Character.Head
-                end
-            else
-                removeESP(player.Name)
-            end
-        else
-            removeESP(player.Name)
-        end
+local function isAlive(player)
+    local character = player.Character
+    if character and character:FindFirstChild("Humanoid") then
+        return character.Humanoid.Health > 0
+    end
+    return false
+end
+
+local function getScreenPosition(worldPos)
+    local screenPos, onScreen = Camera:WorldToViewportPoint(worldPos)
+    if onScreen then
+        return Vector2.new(screenPos.X, screenPos.Y), true
+    else
+        return Vector2.new(screenPos.X, screenPos.Y), false
     end
 end
 
-RunService.RenderStepped:Connect(updateESP)
+-- Track enemies in FOV
+RunService.RenderStepped:Connect(function()
+    if not enabled then
+        fovCircle.Visible = false
+        crosshair.Visible = false
+        return
+    end
 
--- FOV Circle (using Drawing API)
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Visible = false
-FOVCircle.Radius = FOV_RADIUS
-FOVCircle.Color = Color3.new(1, 1, 1)
-FOVCircle.Thickness = 2
-FOVCircle.Filled = false
-FOVCircle.Transparency = 0.6
-FOVCircle.NumSides = 64
+    -- Update FOV circle position (centered on screen)
+    local viewport = Camera.ViewportSize
+    local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
 
--- Get closest valid target inside FOV
-local function GetClosestTarget()
-    local closestTarget = nil
-    local shortestDist = FOV_RADIUS
+    fovCircle.Position = center
+    fovCircle.Radius = FOV_RADIUS_PIXELS
+    fovCircle.Visible = true
+
+    -- We find closest eligible enemy inside FOV
+    local targetPos = nil
+    local closestDist = math.huge
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team and player.Character and player.Character:FindFirstChild("Head") and player.Character:FindFirstChild("Humanoid") then
-            local humanoid = player.Character.Humanoid
-            if humanoid.Health > 0 then
-                local headPos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
+        if player ~= LocalPlayer and not isTeammate(player) and isAlive(player) then
+            local character = player.Character
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local enemyPos3D = character.HumanoidRootPart.Position
+                local screenPos, onScreen = getScreenPosition(enemyPos3D)
+                
                 if onScreen then
-                    local mousePos = UserInputService:GetMouseLocation()
-                    local dist = (Vector2.new(headPos.X, headPos.Y) - Vector2.new(mousePos.X, mousePos.Y)).Magnitude
-                    -- Check line of sight
-                    local rayParams = RaycastParams.new()
-                    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
-                    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-                    local rayResult = workspace:Raycast(Camera.CFrame.Position, (player.Character.Head.Position - Camera.CFrame.Position).Unit * 500, rayParams)
-                    local visible = not rayResult or rayResult.Instance:IsDescendantOf(player.Character)
-                    if dist < shortestDist and visible then
-                        closestTarget = player
-                        shortestDist = dist
+                    local screenVector = screenPos - center
+                    local distance = screenVector.Magnitude
+                    
+                    if distance <= FOV_RADIUS_PIXELS then
+                        -- Check if visible (not behind wall)
+                        if not isWallBetween(Camera.CFrame.Position, enemyPos3D) then
+                            if distance < closestDist then
+                                closestDist = distance
+                                targetPos = screenPos
+                            end
+                        end
                     end
                 end
             end
         end
     end
-    return closestTarget
-end
 
--- Smooth aim function
-local function AimAt(target)
-    if not target or not target.Character or not target.Character:FindFirstChild("Head") then return end
-    local headPos = target.Character.Head.Position
-    local camPos = Camera.CFrame.Position
-    local targetCFrame = CFrame.new(camPos, headPos)
-    -- Tween the camera to target
-    TweenService:Create(Camera, TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = targetCFrame}):Play()
-end
-
--- Main loop
-RunService.RenderStepped:Connect(function()
-    local mousePos = UserInputService:GetMouseLocation()
-    FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
-    FOVCircle.Visible = AimbotEnabled
-
-    if AimbotEnabled then
-        local target = GetClosestTarget()
-        if target then
-            AimAt(target)
-        end
+    if targetPos then
+        crosshair.Position = targetPos
+        crosshair.Visible = true
+    else
+        crosshair.Position = center
+        crosshair.Visible = false
     end
 end)
-
-print("Hacker-style GUI with aimbot loaded.")
