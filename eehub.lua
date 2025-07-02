@@ -7,16 +7,13 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
 -- Configuration
-local FOV_RADIUS_DEGREES = 210 -- As per request
--- Convert 210 degrees to a 2D radius in pixels on screen based on the camera’s FOV and screen size
--- We'll draw a circle with a radius in pixels on the screen, approximate 210° in view angle:
--- Full circle 360°, 210° is about 58% of a circle, but for circle on screen, let's consider pixels:
--- We can pick a pixel radius that covers roughly this angular range on screen.
--- Let's just pick 200 pixels for radius which is visually large
-
+local FOV_RADIUS_DEGREES = 210
 local FOV_RADIUS_PIXELS = 200
 
 local enabled = false
+
+-- Your weapon tool - change this to match your game's gun tool name or attacking method
+local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
 
 -- GUI Setup
 local screenGui = Instance.new("ScreenGui")
@@ -38,26 +35,20 @@ toggleButton.MouseButton1Click:Connect(function()
 end)
 
 -- Draw FOV circle
+local Drawing = Drawing
 local fovCircle = Drawing.new("Circle")
 fovCircle.Visible = false
 fovCircle.Color = Color3.new(1, 1, 1)
 fovCircle.Transparency = 0.5
 fovCircle.Thickness = 2
 
--- Crosshair parts (assumes crosshair is centered, let's create a custom one)
-local crosshair = Drawing.new("Circle")
-crosshair.Color = Color3.new(1, 0, 0)
-crosshair.Thickness = 2
-crosshair.NumSides = 6
-crosshair.Radius = 5
-crosshair.Visible = false
+-- Smooth aim parameters
+local AIM_SMOOTHNESS = 0.2 -- Smaller is faster
 
--- Helper functions
 local function isWallBetween(pos1, pos2)
     local ray = Ray.new(pos1, (pos2 - pos1))
     local hit, hitPos = Workspace:FindPartOnRay(ray, LocalPlayer.Character, false, true)
     if hit then
-        -- hit something between pos1 and pos2, check distance
         local distToHit = (hitPos - pos1).Magnitude
         local distToTarget = (pos2 - pos1).Magnitude
         return distToHit < distToTarget
@@ -66,7 +57,6 @@ local function isWallBetween(pos1, pos2)
 end
 
 local function isTeammate(player)
-    -- Basic team check, assumes teams service or player.Team property
     return player.Team == LocalPlayer.Team
 end
 
@@ -87,43 +77,29 @@ local function getScreenPosition(worldPos)
     end
 end
 
--- Track enemies in FOV
-RunService.RenderStepped:Connect(function()
-    if not enabled then
-        fovCircle.Visible = false
-        crosshair.Visible = false
-        return
-    end
-
-    -- Update FOV circle position (centered on screen)
+local function getClosestTarget()
     local viewport = Camera.ViewportSize
     local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
 
-    fovCircle.Position = center
-    fovCircle.Radius = FOV_RADIUS_PIXELS
-    fovCircle.Visible = true
+    local closestTarget = nil
+    local closestDistance = math.huge
+    local closestWorldPos = nil
 
-    -- We find closest eligible enemy inside FOV
-    local targetPos = nil
-    local closestDist = math.huge
-
-    for _, player in pairs(Players:GetPlayers()) do
+    for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and not isTeammate(player) and isAlive(player) then
             local character = player.Character
-            if character and character:FindFirstChild("HumanoidRootPart") then
-                local enemyPos3D = character.HumanoidRootPart.Position
-                local screenPos, onScreen = getScreenPosition(enemyPos3D)
-                
-                if onScreen then
-                    local screenVector = screenPos - center
-                    local distance = screenVector.Magnitude
-                    
-                    if distance <= FOV_RADIUS_PIXELS then
-                        -- Check if visible (not behind wall)
-                        if not isWallBetween(Camera.CFrame.Position, enemyPos3D) then
-                            if distance < closestDist then
-                                closestDist = distance
-                                targetPos = screenPos
+            if character then
+                local hrp = character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local worldPos = hrp.Position
+                    local screenPos, onScreen = getScreenPosition(worldPos)
+                    local delta = (screenPos - center).Magnitude
+                    if delta <= FOV_RADIUS_PIXELS then
+                        if not isWallBetween(Camera.CFrame.Position, worldPos) then
+                            if delta < closestDistance then
+                                closestDistance = delta
+                                closestTarget = player
+                                closestWorldPos = worldPos
                             end
                         end
                     end
@@ -132,11 +108,45 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    if targetPos then
-        crosshair.Position = targetPos
-        crosshair.Visible = true
-    else
-        crosshair.Position = center
-        crosshair.Visible = false
+    return closestTarget, closestWorldPos
+end
+
+RunService.RenderStepped:Connect(function(dt)
+    if not enabled then
+        fovCircle.Visible = false
+        return
+    end
+
+    local viewport = Camera.ViewportSize
+    local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
+
+    -- Update FOV Circle visual
+    fovCircle.Position = center
+    fovCircle.Radius = FOV_RADIUS_PIXELS
+    fovCircle.Visible = true
+
+    local target, pos = getClosestTarget()
+    if target and pos then
+        -- Smoothly rotate camera toward the target
+        local direction = (pos - Camera.CFrame.Position).Unit
+        local currentCFrame = Camera.CFrame
+        local targetCFrame = CFrame.new(Camera.CFrame.Position, pos)
+
+        -- Smooth Lerp between current and target look vector
+        Camera.CFrame = currentCFrame:Lerp(targetCFrame, AIM_SMOOTHNESS)
+
+        -- Fire weapon if possible and equipped
+        if tool and tool.Parent == LocalPlayer.Character and tool:FindFirstChild("Handle") then
+            -- Trigger the tool activation if not already activated
+            if tool:FindFirstChildOfClass("ClickDetector") then
+                tool.ClickDetector:FireServer() -- Example, depends on weapon
+            elseif tool:FindFirstChild("Fire") then  
+                -- Call Fire RemoteEvent or function: adjust accordingly
+                tool.Fire:FireServer()
+            else
+                -- Basic tool activation
+                tool:Activate()
+            end
+        end
     end
 end)
